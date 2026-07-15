@@ -25,13 +25,25 @@ class SLBusClient {
             });
 
             const data = response.data;
+            console.log(JSON.stringify(data, null, 2));
             if (data.login && data.login.status === 'pass') {
                 this.email = email;
                 this.password = password;
-                this.uuid = data.login.data.dnsListData[0].uuid;
-                this.gatewayName = data.login.data.dnsListData[0].ipAddress || 'SL BUS Gateway';
-                
-                const groupList = data.login.data.dnsListData[0].groupList || [];
+                const dnsList = data.login?.data?.dnsListData || [];
+
+                if (dnsList.length === 0) {
+                    return {
+                        success: false,
+                        error: "No online SL BUS gateway found."
+                    };
+                }
+
+                const gateway = dnsList[0];
+
+                this.uuid = gateway.uuid;
+                this.gatewayName = gateway.dname || gateway.ipAddress || "SL BUS Gateway";
+
+                const groupList = gateway.groupList || [];
                 this.devices = groupList.map((group, index) => ({
                     node: index,
                     name: group.groupName || `Light ${index + 1}`,
