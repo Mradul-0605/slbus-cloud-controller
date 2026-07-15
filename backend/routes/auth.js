@@ -1,0 +1,10 @@
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/authController');
+
+router.post('/login', authController.login);
+router.get('/status', authController.status);
+router.post('/reconnect', authController.reconnect);
+router.get('/check-connection', authController.checkConnection);
+
+module.exports = router;
