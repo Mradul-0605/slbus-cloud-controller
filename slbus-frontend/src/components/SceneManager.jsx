@@ -7,47 +7,98 @@ const SceneManager = () => {
   const [showBuilder, setShowBuilder] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
   const [localScenes, setLocalScenes] = useState([])
+  const [error, setError] = useState(null)
+  const [executionResult, setExecutionResult] = useState(null)
 
   // Load scenes on mount
   useEffect(() => {
-    const loadScenes = async () => {
-      try {
-        const response = await fetch('/api/scenes')
-        const data = await response.json()
-        if (data.success) {
-          setLocalScenes(data.scenes)
-        }
-      } catch (error) {
-        console.error('Failed to load scenes:', error)
-      }
-    }
     loadScenes()
   }, [])
 
-  // Refresh when scenes change
+  const loadScenes = async () => {
+    try {
+      const response = await fetch('/api/scenes')
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const data = await response.json()
+      if (data.success) {
+        setLocalScenes(data.scenes || [])
+        setError(null)
+      } else {
+        setError(data.error || 'Failed to load scenes')
+      }
+    } catch (error) {
+      console.error('Failed to load scenes:', error)
+      setError('Failed to load scenes: ' + error.message)
+    }
+  }
+
+  // Refresh when scenes prop changes
   useEffect(() => {
-    if (scenes) {
+    if (scenes && scenes.length > 0) {
       setLocalScenes(scenes)
     }
   }, [scenes])
 
-  const handleExecuteScene = async (sceneId, groupId) => {
+  const handleExecuteScene = async (sceneId, groupId, sceneName) => {
     setIsExecuting(true)
+    setError(null)
+    setExecutionResult(null)
+    
     try {
+      console.log(`🎬 Executing scene: ${sceneName || sceneId}`)
+      console.log(`📤 Sending: sceneKey=${sceneId}, groupId=${groupId}`)
+      
       const response = await fetch('/api/scene/execute', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneKey: sceneId, groupId })
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          sceneKey: sceneId, 
+          groupId: groupId 
+        })
       })
+
+      // Check if response is OK
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('❌ Server response:', text)
+        throw new Error(`Server returned ${response.status}: ${text || 'Unknown error'}`)
+      }
+
       const data = await response.json()
+      console.log('📥 Response:', data)
+      
       if (data.success) {
-        alert(`✅ Scene "${data.scene}" executed successfully!`)
+        setExecutionResult({
+          success: true,
+          message: `✅ Scene "${data.scene || sceneName}" executed successfully!`,
+          results: data.results
+        })
+        
+        // Show success with node details
+        if (data.results) {
+          const successCount = data.results.filter(r => r.success).length
+          const failCount = data.results.filter(r => !r.success).length
+          console.log(`📊 Results: ${successCount} succeeded, ${failCount} failed`)
+          
+          const nodeDetails = data.results.map(r => 
+            `Node ${r.node}: ${r.success ? '✅' : '❌'} ${r.action || 'power'} ${r.value || ''}`
+          ).join('\n')
+          
+          alert(`✅ Scene "${data.scene || sceneName}" executed!\n\n${nodeDetails}`)
+        } else {
+          alert(`✅ Scene "${data.scene || sceneName}" executed successfully!`)
+        }
       } else {
-        alert('❌ Failed to execute scene: ' + data.error)
+        throw new Error(data.error || 'Failed to execute scene')
       }
     } catch (error) {
-      console.error('Scene execution failed:', error)
-      alert('❌ Failed to execute scene')
+      console.error('❌ Scene execution failed:', error)
+      setError(error.message)
+      alert(`❌ Failed to execute scene: ${error.message}`)
     } finally {
       setIsExecuting(false)
     }
@@ -60,34 +111,33 @@ const SceneManager = () => {
       const response = await fetch(`/api/scene/delete/${sceneId}`, {
         method: 'DELETE'
       })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      
       const data = await response.json()
       if (data.success) {
         alert('✅ Scene deleted successfully!')
-        // Refresh the list
-        const refreshResponse = await fetch('/api/scenes')
-        const refreshData = await refreshResponse.json()
-        if (refreshData.success) {
-          setLocalScenes(refreshData.scenes)
-          if (refreshScenes) refreshScenes()
-        }
+        await loadScenes()
+        if (refreshScenes) refreshScenes()
+      } else {
+        throw new Error(data.error || 'Failed to delete scene')
       }
     } catch (error) {
       console.error('Failed to delete scene:', error)
-      alert('❌ Failed to delete scene')
+      alert('❌ Failed to delete scene: ' + error.message)
     }
   }
 
   const handleSceneCreated = async () => {
-    try {
-      const response = await fetch('/api/scenes')
-      const data = await response.json()
-      if (data.success) {
-        setLocalScenes(data.scenes)
-        if (refreshScenes) refreshScenes()
-      }
-    } catch (error) {
-      console.error('Failed to refresh scenes:', error)
-    }
+    await loadScenes()
+    if (refreshScenes) refreshScenes()
+  }
+
+  // Get scene name from ID (fallback)
+  const getSceneName = (scene) => {
+    return scene.scene_name || scene.name || `Scene ${scene.scene_id?.substring(0, 8)}`
   }
 
   return (
@@ -107,6 +157,24 @@ const SceneManager = () => {
           </button>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg mb-4 text-sm">
+            ⚠️ {error}
+          </div>
+        )}
+
+        {/* Execution Result */}
+        {executionResult && (
+          <div className={`mb-4 p-3 rounded-lg text-sm ${
+            executionResult.success 
+              ? 'bg-green-500/10 border border-green-500/20 text-green-400' 
+              : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}>
+            {executionResult.message}
+          </div>
+        )}
+
         {/* Scene List */}
         <div className="space-y-2">
           {localScenes.length === 0 ? (
@@ -115,38 +183,52 @@ const SceneManager = () => {
             </p>
           ) : (
             localScenes.map((scene) => (
-              <div key={scene.scene_id} className="bg-white/5 rounded-lg p-3">
+              <div key={scene.scene_id || scene.id} className="bg-white/5 rounded-lg p-3">
                 <div className="flex justify-between items-center">
                   <div>
-                    <span className="font-medium text-gray-200">{scene.scene_name}</span>
+                    <span className="font-medium text-gray-200">{getSceneName(scene)}</span>
                     <span className="text-xs text-gray-400 ml-2">
-                      {scene.group_name || scene.group_id} • {scene.nodes?.length || 0} devices
+                      {scene.group_name || scene.group_id || 'No group'} • 
+                      {scene.nodes?.length || 0} devices
                     </span>
                   </div>
                   <div className="flex space-x-2">
                     <button
-                      onClick={() => handleExecuteScene(scene.scene_id, scene.group_id)}
-                      disabled={isExecuting}
-                      className="px-3 py-1 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-xs disabled:opacity-50"
+                      onClick={() => handleExecuteScene(
+                        scene.scene_id || scene.id, 
+                        scene.group_id || scene.groupId,
+                        getSceneName(scene)
+                      )}
+                      disabled={isExecuting || !scene.nodes || scene.nodes.length === 0}
+                      className={`px-3 py-1 rounded-lg text-xs transition-colors ${
+                        isExecuting || !scene.nodes || scene.nodes.length === 0
+                          ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed'
+                          : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                      }`}
                     >
-                      ▶ Execute
+                      {isExecuting ? '⏳...' : '▶ Execute'}
                     </button>
                     <button
-                      onClick={() => handleDeleteScene(scene.scene_id)}
+                      onClick={() => handleDeleteScene(scene.scene_id || scene.id)}
                       className="px-3 py-1 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-xs"
                     >
                       ✕ Delete
                     </button>
                   </div>
                 </div>
+                
+                {/* Show node preview */}
                 {scene.nodes && scene.nodes.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {scene.nodes.map((node, idx) => (
+                    {scene.nodes.slice(0, 3).map((node, idx) => (
                       <span key={idx} className="text-xs bg-white/5 px-2 py-0.5 rounded text-gray-400">
                         Node {node.node}: {node.value > 0 ? `${Math.round((node.value/254)*100)}%` : 'OFF'}
-                        {node.temperature && ` • ${node.temperature}K`}
+                        {node.temperature && node.value > 0 && ` • ${node.temperature}K`}
                       </span>
                     ))}
+                    {scene.nodes.length > 3 && (
+                      <span className="text-xs text-gray-500">+{scene.nodes.length - 3} more</span>
+                    )}
                   </div>
                 )}
               </div>

@@ -7,12 +7,14 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true
+        target: 'https://slbus-backend.onrender.com',  // ← CHANGE THIS
+        changeOrigin: true,
+        secure: true
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
-        ws: true
+        target: 'https://slbus-backend.onrender.com',  // ← CHANGE THIS
+        ws: true,
+        changeOrigin: true
       }
     }
   }
