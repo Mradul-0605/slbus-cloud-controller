@@ -1,8 +1,6 @@
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-console.log("API URL =", API_BASE);
-
 
 const api = axios.create({
     baseURL: API_BASE,
@@ -15,6 +13,7 @@ const api = axios.create({
 api.interceptors.response.use(
     response => response,
     error => {
+        console.error('API Error:', error.response?.data || error.message);
         if (error.response?.status === 401) {
             localStorage.removeItem('slbus_auth');
             window.location.href = '/login';

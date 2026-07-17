@@ -1,4 +1,5 @@
-const slbusService = require('../services/slbusService');
+const { slbusService } = require('../services/slbusService');
+const { getDevices, subscribeToDevices } = require('../services/mqttService');
 
 exports.login = async (req, res) => {
     try {
@@ -14,17 +15,21 @@ exports.login = async (req, res) => {
         const result = await slbusService.login(email, password);
         
         if (result.success) {
-            // Try to check actual connection
-            await slbusService.checkConnection();
             const status = slbusService.getStatus();
+            const devices = getDevices();
+            
+            // Subscribe to MQTT
+            if (status.custid && status.uuid) {
+                subscribeToDevices(status.custid, status.uuid);
+            }
             
             res.json({
                 success: true,
                 gateway: {
-                    connected: status.connected,
+                    connected: true,
                     uuid: result.uuid,
-                    deviceName: status.gateway,
-                    devices: result.devices
+                    deviceName: status.gateway || 'SL BUS Gateway',
+                    devices: devices
                 }
             });
         } else {
@@ -43,13 +48,23 @@ exports.login = async (req, res) => {
 
 exports.status = (req, res) => {
     const status = slbusService.getStatus();
+    const devices = getDevices();
+    
     res.json({
         success: true,
-        loggedIn: status.loggedIn,
         connected: status.connected,
         gateway: status.gateway,
         uuid: status.uuid,
-        error: status.error || ''
+        custid: status.custid,
+        devices: devices,
+        error: ''
+    });
+};
+
+exports.logout = (req, res) => {
+    res.json({
+        success: true,
+        message: 'Logged out successfully'
     });
 };
 
@@ -57,18 +72,29 @@ exports.reconnect = async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        const result = await slbusService.reconnect(email, password);
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                error: 'Email and password required'
+            });
+        }
+
+        const result = await slbusService.login(email, password);
         
         if (result.success) {
-            await slbusService.checkConnection();
             const status = slbusService.getStatus();
+            const devices = getDevices();
+            
+            if (status.custid && status.uuid) {
+                subscribeToDevices(status.custid, status.uuid);
+            }
             
             res.json({
                 success: true,
-                connected: status.connected,
-                loggedIn: status.loggedIn,
-                gateway: status.gateway,
-                uuid: result.uuid
+                connected: true,
+                gateway: status.gateway || 'SL BUS Gateway',
+                uuid: result.uuid,
+                devices: devices
             });
         } else {
             res.status(401).json({
@@ -79,26 +105,6 @@ exports.reconnect = async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            error: error.message
-        });
-    }
-};
-
-exports.checkConnection = async (req, res) => {
-    try {
-        const connected = await slbusService.checkConnection();
-        const status = slbusService.getStatus();
-        res.json({
-            success: true,
-            connected: connected,
-            loggedIn: status.loggedIn,
-            gateway: status.gateway,
-            error: status.error || ''
-        });
-    } catch (error) {
-        res.json({
-            success: true,
-            connected: false,
             error: error.message
         });
     }

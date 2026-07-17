@@ -1,16 +1,22 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, LogOut, WifiOff, Layers } from 'lucide-react';  // ← ADD Layers
+import { Home, LogOut, Layers, WifiOff, RefreshCw } from 'lucide-react';
 import Layout from '../components/Layout';
 import DeviceCard from '../components/DeviceCard';
-import ConnectionStatus from '../components/ConnectionStatus';
-import { useDevices } from '../hooks/useDevices';
+import GatewayStatus from '../components/GatewayStatus';
+import { useDeviceContext } from '../context/DeviceContext';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const { devices, loading } = useDevices();
-    const { logout, isConnected, reconnect } = useAuth();
+    const { logout } = useAuth();
+    const { devices, loading, connected, refresh } = useDeviceContext();
+
+    useEffect(() => {
+        refresh();
+    }, []);
+
+    const showConnected = connected || (devices && devices.length > 0);
 
     return (
         <Layout>
@@ -18,9 +24,15 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-                        <p className="text-gray-400 text-sm">Control your smart home</p>
+                        <p className="text-gray-400 text-sm">Real-time smart home control</p>
                     </div>
                     <div className="flex gap-2">
+                        <button
+                            onClick={refresh}
+                            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
+                        >
+                            <RefreshCw size={18} className="text-gray-400" />
+                        </button>
                         <button
                             onClick={() => navigate('/master')}
                             className="p-2 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary transition flex items-center gap-2"
@@ -37,17 +49,17 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                <ConnectionStatus />
+                <GatewayStatus />
 
                 {loading ? (
                     <div className="flex justify-center py-12">
                         <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
                     </div>
-                ) : !isConnected ? (
+                ) : !showConnected ? (
                     <div className="glass rounded-xl p-8 text-center">
                         <WifiOff size={48} className="text-gray-600 mx-auto mb-3" />
                         <p className="text-gray-400">Gateway disconnected</p>
-                        <p className="text-sm text-gray-500 mt-1">Check your network connection</p>
+                        <p className="text-sm text-gray-500 mt-1">Waiting for connection...</p>
                     </div>
                 ) : devices.length === 0 ? (
                     <div className="glass rounded-xl p-8 text-center">
@@ -56,8 +68,7 @@ export default function Dashboard() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {/* Master Control Card */}
-                        <div 
+                        <div
                             onClick={() => navigate('/master')}
                             className="glass-card rounded-xl p-4 cursor-pointer hover:border-primary/30 border-2 border-primary/20"
                         >
@@ -68,21 +79,20 @@ export default function Dashboard() {
                                     </div>
                                     <div>
                                         <h3 className="text-white font-medium">Master Control</h3>
-                                        <p className="text-xs text-gray-500">Control All Lights</p>
+                                        <p className="text-xs text-gray-500">All Lights</p>
                                     </div>
                                 </div>
                             </div>
                             <div className="mt-3 flex items-center gap-2">
-                                <span className="text-xs text-primary">● Click to control all</span>
+                                <span className="text-xs text-primary">● Real-time sync</span>
                             </div>
                         </div>
 
-                        {/* Individual Device Cards */}
                         {devices.map((device) => (
                             <DeviceCard
                                 key={device.node}
                                 device={device}
-                                isConnected={isConnected}
+                                isConnected={showConnected}
                                 onControl={() => navigate(`/device/${device.node}`)}
                             />
                         ))}

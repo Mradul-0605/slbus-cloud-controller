@@ -2,56 +2,91 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Power, PowerOff, Sun, Thermometer, RefreshCw, WifiOff } from 'lucide-react';
 import Layout from '../components/Layout';
-import api from '../api/client';
+import { useDeviceContext } from '../context/DeviceContext';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../hooks/useAuth';
+import api from '../api/client';
 
 export default function DeviceControl() {
     const { node } = useParams();
     const navigate = useNavigate();
     const { showToast } = useToast();
     const { isConnected, reconnect } = useAuth();
+    const { devices, refresh } = useDeviceContext();
+
     const [loading, setLoading] = useState(true);
-    const [isOn, setIsOn] = useState(false);
-    const [brightness, setBrightness] = useState(127);
-    const [temperature, setTemperature] = useState(4000);
     const [updating, setUpdating] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    
+
+    const nodeNum = parseInt(node);
+    const device = devices.find(d => d.node === nodeNum);
+
+    // Slider state - separate from MQTT state to prevent jumps
+    const [sliderBrightness, setSliderBrightness] = useState(127);
+    const [sliderTemperature, setSliderTemperature] = useState(4000);
+
     const brightnessTimer = useRef(null);
     const tempTimer = useRef(null);
+    const isMounted = useRef(true);
+
+    // Update slider state when device changes (MQTT update)
+    useEffect(() => {
+        if (device) {
+            setSliderBrightness(device.brightness ?? 127);
+            setSliderTemperature(device.temperature ?? 4000);
+        }
+    }, [device]);
+
+    // Get actual device state from context
+    const isOn = device?.power ?? false;
+    const brightness = device?.brightness ?? 127;
+    const temperature = device?.temperature ?? 4000;
 
     useEffect(() => {
+        return () => {
+            isMounted.current = false;
+        };
+    }, []);
+
+    // Initial fetch - only runs once on mount or when node changes
+    useEffect(() => {
+        const loadDevice = async () => {
+            // If device already exists in context, don't show loading
+            if (device) {
+                setLoading(false);
+                return;
+            }
+
+            setLoading(true);
+            try {
+                await refresh();
+                // After refresh, check again
+                const updatedDevice = devices.find(d => d.node === nodeNum);
+                if (updatedDevice) {
+                    setSliderBrightness(updatedDevice.brightness ?? 127);
+                    setSliderTemperature(updatedDevice.temperature ?? 4000);
+                }
+            } catch (error) {
+                console.error('Failed to load device:', error);
+                showToast('Failed to load device', 'error');
+            } finally {
+                if (isMounted.current) setLoading(false);
+            }
+        };
+
         if (isConnected) {
-            fetchStatus();
+            loadDevice();
         } else {
             setLoading(false);
         }
-    }, [node, isConnected]);
+    }, [node, isConnected]); // Only re-run when node or connection changes
 
     const fetchStatus = async () => {
         if (!isConnected) return;
-        setRefreshing(true);
         try {
-            const [statusRes, brightnessRes] = await Promise.all([
-                api.get(`/light/${node}/status`),
-                api.get(`/light/${node}/brightness`)
-            ]);
-
-            if (statusRes.data.success) {
-                setIsOn(statusRes.data.data?.status === true);
-            }
-            if (brightnessRes.data.success) {
-                const val = brightnessRes.data.data?.brightness;
-                if (val !== undefined && val !== null) {
-                    setBrightness(val);
-                }
-            }
+            await refresh();
+            showToast('Status refreshed', 'info');
         } catch (error) {
             console.error('Status fetch failed:', error);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
         }
     };
 
@@ -59,42 +94,49 @@ export default function DeviceControl() {
         if (updating || !isConnected) return;
         setUpdating(true);
         try {
-            const endpoint = on ? 'on' : 'off';
-            await api.post(`/light/${node}/${endpoint}`);
-            setIsOn(on);
-            showToast(`Turned ${on ? 'ON' : 'OFF'}`, 'success');
-        } catch (error) {
-            showToast('Failed to control device', 'error');
+            await api.post(`/light/${node}/${on ? "on" : "off"}`);
+            showToast(`Light ${node} ${on ? "ON" : "OFF"}`, "success");
+            // MQTT will update automatically
+        } catch {
+            showToast("Failed to control device", "error");
         } finally {
             setUpdating(false);
         }
     };
 
     const handleBrightnessChange = (value) => {
-        setBrightness(value);
+        if (!isConnected || !isOn) return;
+
         if (brightnessTimer.current) clearTimeout(brightnessTimer.current);
-        brightnessTimer.current = setTimeout(() => {
-            if (isConnected) {
-                api.post(`/light/${node}/brightness`, { level: value }).catch(console.error);
+
+        brightnessTimer.current = setTimeout(async () => {
+            try {
+                await api.post(`/light/${node}/brightness`, { level: value });
+            } catch (err) {
+                console.error(err);
             }
-        }, 500);
+        }, 300);
     };
 
     const handleTemperatureChange = (value) => {
-        setTemperature(value);
+        if (!isConnected || !isOn) return;
+
         if (tempTimer.current) clearTimeout(tempTimer.current);
-        tempTimer.current = setTimeout(() => {
-            if (isConnected) {
-                api.post(`/light/${node}/temp`, { kelvin: value }).catch(console.error);
+
+        tempTimer.current = setTimeout(async () => {
+            try {
+                await api.post(`/light/${node}/temp`, { kelvin: value });
+            } catch (err) {
+                console.error(err);
             }
-        }, 500);
+        }, 300);
     };
 
     const handleReconnect = async () => {
         const result = await reconnect();
         if (result.success) {
             showToast('Reconnected!', 'success');
-            fetchStatus();
+            await refresh();
         } else {
             showToast('Reconnection failed', 'error');
         }
@@ -150,10 +192,9 @@ export default function DeviceControl() {
                     </button>
                     <button
                         onClick={fetchStatus}
-                        disabled={refreshing}
                         className="flex items-center gap-2 text-gray-400 hover:text-white transition px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10"
                     >
-                        <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                        <RefreshCw size={16} />
                         Refresh
                     </button>
                 </div>
@@ -168,6 +209,7 @@ export default function DeviceControl() {
                             <span className={`text-sm ${isOn ? 'text-green-500' : 'text-gray-500'}`}>
                                 {isOn ? '● ON' : '● OFF'}
                             </span>
+                            <span className="text-xs text-gray-500">Real-time</span>
                         </div>
                     </div>
 
@@ -205,14 +247,18 @@ export default function DeviceControl() {
                                     <Sun size={16} />
                                     Brightness
                                 </span>
-                                <span>{Math.round((brightness / 254) * 100)}%</span>
+                                <span>{Math.round((sliderBrightness / 254) * 100)}%</span>
                             </div>
                             <input
                                 type="range"
                                 min="0"
                                 max="254"
-                                value={brightness}
-                                onChange={(e) => handleBrightnessChange(parseInt(e.target.value))}
+                                value={sliderBrightness}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setSliderBrightness(val);
+                                    handleBrightnessChange(val);
+                                }}
                                 className="w-full slider-thumb h-1.5 rounded-full bg-gray-700 appearance-none cursor-pointer"
                                 disabled={!isOn || !isConnected}
                             />
@@ -224,14 +270,18 @@ export default function DeviceControl() {
                                     <Thermometer size={16} />
                                     Color Temperature
                                 </span>
-                                <span>{temperature}K</span>
+                                <span>{sliderTemperature}K</span>
                             </div>
                             <input
                                 type="range"
                                 min="2700"
                                 max="6500"
-                                value={temperature}
-                                onChange={(e) => handleTemperatureChange(parseInt(e.target.value))}
+                                value={sliderTemperature}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setSliderTemperature(val);
+                                    handleTemperatureChange(val);
+                                }}
                                 className="w-full slider-thumb h-1.5 rounded-full bg-gray-700 appearance-none cursor-pointer"
                                 style={{
                                     background: `linear-gradient(to right, #ff7b00, #ffd700, #87ceeb)`

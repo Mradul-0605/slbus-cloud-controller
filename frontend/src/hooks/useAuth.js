@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { disconnectSocket } from '../socket/socket';
 
 export function useAuth() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -7,16 +9,18 @@ export function useAuth() {
     const [gatewayInfo, setGatewayInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const navigate = useNavigate();
 
     const checkStatus = async () => {
         try {
             const response = await api.get('/status');
             if (response.data.success) {
                 setIsConnected(response.data.connected || false);
-                setIsAuthenticated(response.data.loggedIn || false);
+                setIsAuthenticated(response.data.connected || false);
                 setGatewayInfo({
                     gateway: response.data.gateway,
-                    uuid: response.data.uuid
+                    uuid: response.data.uuid,
+                    custid: response.data.custid
                 });
                 if (response.data.error) {
                     setError(response.data.error);
@@ -40,15 +44,7 @@ export function useAuth() {
             setLoading(false);
         };
         init();
-
-        const interval = setInterval(async () => {
-            if (isAuthenticated) {
-                await checkStatus();
-            }
-        }, 10000);
-
-        return () => clearInterval(interval);
-    }, [isAuthenticated]);
+    }, []);
 
     const login = async (email, password) => {
         try {
@@ -59,7 +55,7 @@ export function useAuth() {
                 setGatewayInfo({
                     gateway: response.data.gateway.deviceName,
                     uuid: response.data.gateway.uuid,
-                    devices: response.data.gateway.devices
+                    custid: response.data.gateway.custid
                 });
                 localStorage.setItem('slbus_auth', 'true');
                 localStorage.setItem('slbus_email', email);
@@ -107,6 +103,8 @@ export function useAuth() {
         setIsConnected(false);
         setGatewayInfo(null);
         localStorage.removeItem('slbus_auth');
+        disconnectSocket();
+        navigate('/login');
     };
 
     return { 
