@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useDeviceContext } from '../hooks/useDeviceContext'
 
+// ✅ HARDCODED - YOUR BACKEND URL
+const API_BASE = 'https://slbus-backend.onrender.com/api'
+
 const SceneBuilder = ({ onClose, onSceneCreated }) => {
   const { groups, devices } = useDeviceContext()
   const [sceneName, setSceneName] = useState('')
@@ -67,7 +70,8 @@ const SceneBuilder = ({ onClose, onSceneCreated }) => {
 
     setIsSaving(true)
     try {
-      const response = await fetch('/api/scene/create', {
+      console.log('📤 POST to:', `${API_BASE}/scene/create`)
+      const response = await fetch(`${API_BASE}/scene/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -103,7 +107,8 @@ const SceneBuilder = ({ onClose, onSceneCreated }) => {
 
     setIsSaving(true)
     try {
-      const response = await fetch('/api/scene/save-current', {
+      console.log('📤 POST to:', `${API_BASE}/scene/save-current`)
+      const response = await fetch(`${API_BASE}/scene/save-current`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

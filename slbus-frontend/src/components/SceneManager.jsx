@@ -2,22 +2,25 @@ import React, { useState, useEffect } from 'react'
 import { useDeviceContext } from '../hooks/useDeviceContext'
 import SceneBuilder from './SceneBuilder'
 
+// ✅ HARDCODED - YOUR BACKEND URL
+const API_BASE = 'https://slbus-backend.onrender.com/api'
+
 const SceneManager = () => {
-  const { scenes, executeScene, refreshScenes } = useDeviceContext()
+  const { scenes, refreshScenes } = useDeviceContext()
   const [showBuilder, setShowBuilder] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
   const [localScenes, setLocalScenes] = useState([])
   const [error, setError] = useState(null)
   const [executionResult, setExecutionResult] = useState(null)
 
-  // Load scenes on mount
   useEffect(() => {
     loadScenes()
   }, [])
 
   const loadScenes = async () => {
     try {
-      const response = await fetch('/api/scenes')
+      console.log('📡 Fetching from:', `${API_BASE}/scenes`)
+      const response = await fetch(`${API_BASE}/scenes`)  // ← FIXED
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }
@@ -34,7 +37,6 @@ const SceneManager = () => {
     }
   }
 
-  // Refresh when scenes prop changes
   useEffect(() => {
     if (scenes && scenes.length > 0) {
       setLocalScenes(scenes)
@@ -48,20 +50,17 @@ const SceneManager = () => {
     
     try {
       console.log(`🎬 Executing scene: ${sceneName || sceneId}`)
-      console.log(`📤 Sending: sceneKey=${sceneId}, groupId=${groupId}`)
+      console.log(`📤 Sending to: ${API_BASE}/scene/execute`)
       
-      const response = await fetch('/api/scene/execute', {
+      const response = await fetch(`${API_BASE}/scene/execute`, {  // ← FIXED
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           sceneKey: sceneId, 
           groupId: groupId 
         })
       })
 
-      // Check if response is OK
       if (!response.ok) {
         const text = await response.text()
         console.error('❌ Server response:', text)
@@ -78,7 +77,6 @@ const SceneManager = () => {
           results: data.results
         })
         
-        // Show success with node details
         if (data.results) {
           const successCount = data.results.filter(r => r.success).length
           const failCount = data.results.filter(r => !r.success).length
@@ -108,7 +106,7 @@ const SceneManager = () => {
     if (!confirm('Are you sure you want to delete this scene?')) return
     
     try {
-      const response = await fetch(`/api/scene/delete/${sceneId}`, {
+      const response = await fetch(`${API_BASE}/scene/delete/${sceneId}`, {  // ← FIXED
         method: 'DELETE'
       })
       
@@ -135,7 +133,6 @@ const SceneManager = () => {
     if (refreshScenes) refreshScenes()
   }
 
-  // Get scene name from ID (fallback)
   const getSceneName = (scene) => {
     return scene.scene_name || scene.name || `Scene ${scene.scene_id?.substring(0, 8)}`
   }
@@ -157,14 +154,12 @@ const SceneManager = () => {
           </button>
         </div>
 
-        {/* Error Display */}
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg mb-4 text-sm">
             ⚠️ {error}
           </div>
         )}
 
-        {/* Execution Result */}
         {executionResult && (
           <div className={`mb-4 p-3 rounded-lg text-sm ${
             executionResult.success 
@@ -175,7 +170,6 @@ const SceneManager = () => {
           </div>
         )}
 
-        {/* Scene List */}
         <div className="space-y-2">
           {localScenes.length === 0 ? (
             <p className="text-gray-500 text-sm text-center py-4">
@@ -217,7 +211,6 @@ const SceneManager = () => {
                   </div>
                 </div>
                 
-                {/* Show node preview */}
                 {scene.nodes && scene.nodes.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {scene.nodes.slice(0, 3).map((node, idx) => (
@@ -237,7 +230,6 @@ const SceneManager = () => {
         </div>
       </div>
 
-      {/* Scene Builder Modal */}
       {showBuilder && (
         <SceneBuilder
           onClose={() => setShowBuilder(false)}
