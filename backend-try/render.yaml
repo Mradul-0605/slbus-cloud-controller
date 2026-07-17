@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: slbus-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: MQTT_BROKER
+        value: mqtt://mqtt.slbus.in:1883
+      - key: DATABASE_URL
+        sync: false
+      # You'll add DATABASE_URL manually in Render dashboard
+      # OR use fromDatabase if using Render PostgreSQL

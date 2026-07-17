@@ -31,8 +31,9 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mqtt": "^5.15.2",
+    "pg": "^8.22.0",
+    "sequelize": "^6.37.8",
     "socket.io": "^4.8.3",
-    "sqlite3": "^6.0.1",
     "uuid": "^14.0.1"
   },
   "name": "backend-try",
